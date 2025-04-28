@@ -135,12 +135,7 @@ export default function Dashboard() {
       toast.error('Erro: Dados do formulário não encontrados')
       return
     }
-
-    if (addCount < 1 || addCount > 15) {
-      toast.error('Escolha entre 1 e 15 questões adicionais')
-      return
-    }
-
+  
     setIsGeneratingMore(true)
     try {
       const response = await fetch('/api/generate', {
@@ -150,23 +145,19 @@ export default function Dashboard() {
         },
         body: JSON.stringify({
           ...lastFormData,
-          quantidade: addCount,
-          questoes_anteriores: questions,
+          quantidade: 1
         }),
       })
-
+  
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || 'Erro ao gerar questões adicionais')
       }
-
+  
       const result = await response.json()
-      console.log('Novas questões originais:', result.questions)
       const novasQuestoesEmbaralhadas = result.questions.map(embaralharAlternativas)
-      console.log('Novas questões embaralhadas:', novasQuestoesEmbaralhadas)
       setQuestions(prev => [...prev, ...novasQuestoesEmbaralhadas])
-      setAddCount(1)
-      toast.success('Questões adicionais geradas com sucesso!')
+      toast.success('Questão adicional gerada com sucesso!')
     } catch (error: any) {
       toast.error(error.message)
     } finally {
