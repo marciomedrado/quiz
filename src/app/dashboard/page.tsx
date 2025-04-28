@@ -25,6 +25,43 @@ interface Question {
   resposta?: string // para questões abertas
 }
 
+type EditData = {
+  enunciado?: string
+  alternativas?: string[]
+  correta?: number
+  explicacao?: string
+  resposta?: string
+}
+
+// Função de embaralhamento
+function embaralharAlternativas(questao: Question): Question {
+  // Se não for questão de múltipla escolha, retorna sem alteração
+  if (!questao.alternativas || typeof questao.correta !== 'number') {
+    return questao
+  }
+
+  const alternativas = [...questao.alternativas]
+  const correta = questao.correta
+  const indices = alternativas.map((_, i) => i)
+  
+  // Embaralha os índices (Fisher-Yates)
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[indices[i], indices[j]] = [indices[j], indices[i]]
+  }
+  
+  // Aplica o embaralhamento nas alternativas
+  const novasAlternativas = indices.map(i => alternativas[i])
+  // Descobre o novo índice da correta
+  const novaCorreta = indices.indexOf(correta)
+  
+  return {
+    ...questao,
+    alternativas: novasAlternativas,
+    correta: novaCorreta
+  }
+}
+
 export default function Dashboard() {
   const router = useRouter()
   const [isAuthChecking, setIsAuthChecking] = useState(true)
@@ -39,7 +76,7 @@ export default function Dashboard() {
   const [examData, setExamData] = useState<ExamData | null>(null)
   const [isGeneratingDocx, setIsGeneratingDocx] = useState(false)
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
-  const [editData, setEditData] = useState<Partial<Question>>({})
+  const [editData, setEditData] = useState<EditData>({})
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -80,7 +117,10 @@ export default function Dashboard() {
       }
 
       const result = await response.json()
-      setQuestions(result.questions)
+      console.log('Questões originais:', result.questions)
+      const questoesEmbaralhadas = result.questions.map(embaralharAlternativas)
+      console.log('Questões embaralhadas:', questoesEmbaralhadas)
+      setQuestions(questoesEmbaralhadas)
       setShowAddMore(true)
       toast.success('Questões geradas com sucesso!')
     } catch (error: any) {
@@ -121,7 +161,10 @@ export default function Dashboard() {
       }
 
       const result = await response.json()
-      setQuestions(prev => [...prev, ...result.questions])
+      console.log('Novas questões originais:', result.questions)
+      const novasQuestoesEmbaralhadas = result.questions.map(embaralharAlternativas)
+      console.log('Novas questões embaralhadas:', novasQuestoesEmbaralhadas)
+      setQuestions(prev => [...prev, ...novasQuestoesEmbaralhadas])
       setAddCount(1)
       toast.success('Questões adicionais geradas com sucesso!')
     } catch (error: any) {
@@ -335,7 +378,16 @@ export default function Dashboard() {
 
   const handleSave = (idx: number) => {
     const updated = [...questions]
-    updated[idx] = { ...updated[idx], ...editData }
+    // Se as alternativas foram editadas, embaralha novamente
+    if (editData.alternativas) {
+      const questaoAtualizada = embaralharAlternativas({
+        ...updated[idx],
+        ...editData
+      })
+      updated[idx] = questaoAtualizada
+    } else {
+      updated[idx] = { ...updated[idx], ...editData }
+    }
     setQuestions(updated)
     setEditingIdx(null)
     setEditData({})
