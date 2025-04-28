@@ -647,7 +647,7 @@ export default function Dashboard() {
                       <input
                         type="number"
                         min={1}
-                        max={15}
+                        max={1}
                         value={addCount}
                         onChange={(e) => setAddCount(Number(e.target.value))}
                         className="w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
