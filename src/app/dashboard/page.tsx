@@ -7,7 +7,7 @@ import ExamDataModal, { ExamData } from '@/components/ExamDataModal'
 import ListManager from '@/components/ListManager'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
-import { Document, Packer, Paragraph, TextRun } from 'docx'
+import { Document, Packer, Paragraph, TextRun, AlignmentType } from "docx";
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -283,7 +283,7 @@ export default function Dashboard() {
                     size: 32,
                   }),
                 ],
-                alignment: 'center',
+                alignment: AlignmentType.CENTER,
                 spacing: { after: 300 },
               }),
               ...headerParagraphs,
