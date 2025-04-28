@@ -2,30 +2,6 @@ import { NextResponse } from 'next/server'
 
 const openaiApiKey = process.env.OPENAI_API_KEY
 
-function verificaDistribuicaoRespostas(questions: any[]) {
-  const contagem = questions.reduce((acc: { [key: number]: number }, q) => {
-    if (q.correta !== undefined) {
-      acc[q.correta] = (acc[q.correta] || 0) + 1
-    }
-    return acc
-  }, {})
-
-  const total = questions.length
-  const porcentagens = Object.entries(contagem).map(([posicao, quantidade]) => ({
-    posicao: Number(posicao),
-    porcentagem: (quantidade as number / total) * 100
-  }))
-
-  const distribuicaoRuim = porcentagens.some(p => p.porcentagem > 60)
-  const todasMesmaPosicao = Object.keys(contagem).length === 1
-
-  return {
-    distribuicaoRuim,
-    todasMesmaPosicao,
-    contagem
-  }
-}
-
 async function gerarQuestoes(prompt: string): Promise<any> {
   console.log("Chamando OpenAI com prompt:", prompt.slice(0, 300) + '...')
 
@@ -56,12 +32,10 @@ async function gerarQuestoes(prompt: string): Promise<any> {
     throw new Error('Erro ao gerar questões com a OpenAI: resposta vazia')
   }
 
-  // PARSER ROBUSTO
   let questions
   try {
     questions = JSON.parse(content)
   } catch {
-    // Tenta extrair o primeiro array JSON do texto
     const match = content.match(/\[[\s\S]*\]/)
     if (!match) {
       console.error("Conteúdo retornado pela OpenAI (sem JSON):", content)
@@ -80,13 +54,13 @@ async function gerarQuestoes(prompt: string): Promise<any> {
 function getNivelQuestaoPrompt(nivel: string) {
   switch (nivel) {
     case 'Nível Fundamental I (até 11 anos)':
-      return 'As questões devem ser adequadas para crianças até 11 anos, com linguagem simples e exemplos do cotidiano escolar ou familiar.'
+      return 'A questão deve ser adequada para crianças até 11 anos, com linguagem simples e exemplos do cotidiano escolar ou familiar.'
     case 'Nível Fundamental II (até 14 anos)':
-      return 'As questões devem ser adequadas para adolescentes até 14 anos, com linguagem acessível e exemplos do cotidiano escolar, podendo abordar temas um pouco mais complexos.'
+      return 'A questão deve ser adequada para adolescentes até 14 anos, com linguagem acessível e exemplos do cotidiano escolar, podendo abordar temas um pouco mais complexos.'
     case 'Nível Médio':
-      return 'As questões devem ser adequadas para estudantes do Ensino Médio, com linguagem apropriada para jovens de 15 a 18 anos, podendo abordar temas mais aprofundados e críticos.'
+      return 'A questão deve ser adequada para estudantes do Ensino Médio, com linguagem apropriada para jovens de 15 a 18 anos, podendo abordar temas mais aprofundados e críticos.'
     case 'Nível Superior':
-      return 'As questões devem ser adequadas para estudantes universitários, com linguagem técnica e abordagem aprofundada dos temas.'
+      return 'A questão deve ser adequada para estudantes universitários, com linguagem técnica e abordagem aprofundada dos temas.'
     default:
       return ''
   }
@@ -119,29 +93,13 @@ export async function POST(req: Request) {
     const body = await req.json()
     const nivelQuestaoPrompt = getNivelQuestaoPrompt(body.nivel)
     const nivelExplicacaoPrompt = getNivelExplicacaoPrompt(body.explicacao)
-    const questoesAnteriores = body.questoes_anteriores || []
 
-    let questions
-    let tentativas = 0
-    const maxTentativas = 3
-
-    do {
-      let prompt = ''
-      
-      const contextoPrevio = questoesAnteriores.length > 0 
-        ? `
-Importante: Já foram geradas as seguintes questões anteriormente:
-${JSON.stringify(questoesAnteriores, null, 2)}
-
-NÃO REPITA nenhuma dessas questões. Gere questões DIFERENTES das anteriores, variando o formato e a abordagem.
-
-`
-        : ''
-
-      if (body.alternativas === 0 || body.alternativas === 'Aberta') {
-        prompt = `${contextoPrevio}
-Gere exatamente ${body.quantidade} questões NOVAS E DIFERENTES sobre o tema "${body.tema}" na área "${body.area}".
-Cada questão deve conter:
+    let prompt = ''
+    
+    if (body.alternativas === 0 || body.alternativas === 'Aberta') {
+      prompt = `
+Gere uma questão sobre o tema "${body.tema}" na área "${body.area}".
+A questão deve conter:
 1. O enunciado da questão
 2. A resposta correta
 3. Uma explicação da resposta
@@ -155,18 +113,15 @@ Exemplo de formato esperado:
     "resposta": "Resposta correta da pergunta...",
     "explicacao": "Explicação detalhada da resposta..."
   }
-]
-`
-      } else {
-        prompt = `${contextoPrevio}
-Gere exatamente ${body.quantidade} questões NOVAS E DIFERENTES de múltipla escolha sobre o tema "${body.tema}" na área "${body.area}".
-Cada questão deve ter ${body.alternativas || 4} alternativas, apenas uma correta.
+]`
+    } else {
+      prompt = `
+Gere uma questão de múltipla escolha sobre o tema "${body.tema}" na área "${body.area}".
+A questão deve ter ${body.alternativas || 4} alternativas, apenas uma correta.
 IMPORTANTE: 
 - Distribua as respostas corretas de forma aleatória entre as alternativas.
-- Evite colocar muitas respostas corretas na mesma posição.
-- NÃO REPITA questões anteriores nem use formatos muito similares.
-Escreva as alternativas como uma lista de strings, sem letras, números ou símbolos antes do texto (apenas o texto da alternativa).
-Indique o índice da alternativa correta após o embaralhamento, usando o campo "correta" (de 0 a 3).
+- Evite colocar mais de uma resposta correta.
+- Escreva as alternativas como uma lista de strings, sem letras, números ou símbolos antes do texto.
 ${nivelQuestaoPrompt}
 A explicação deve seguir este critério: ${nivelExplicacaoPrompt}
 Responda apenas com o JSON, sem explicações, sem comentários, sem texto antes ou depois.
@@ -178,33 +133,18 @@ Exemplo de formato esperado:
     "correta": 0,
     "explicacao": "Paris é a capital da França."
   }
-]
-`
-      }
+]`
+    }
 
-      questions = await gerarQuestoes(prompt)
-      
-      if (body.alternativas !== 0 && body.alternativas !== 'Aberta') {
-        const { distribuicaoRuim, todasMesmaPosicao } = verificaDistribuicaoRespostas(questions)
-        if (!distribuicaoRuim && !todasMesmaPosicao) {
-          break
-        }
-        console.log(`Tentativa ${tentativas + 1}: Distribuição ruim ou respostas na mesma posição. Gerando novamente...`)
-      } else {
-        break
-      }
-
-      tentativas++
-    } while (tentativas < maxTentativas)
-
-    console.log("Questões geradas com sucesso:", Array.isArray(questions) ? questions.length : typeof questions)
-
+    const questions = await gerarQuestoes(prompt)
+    console.log("Questão gerada com sucesso")
+    
     return NextResponse.json({ questions })
 
   } catch (error: any) {
-    console.error("Erro ao gerar questões:", error)
+    console.error("Erro ao gerar questão:", error)
     return NextResponse.json(
-      { error: error.message || 'Erro desconhecido ao gerar questões' },
+      { error: error.message || 'Erro desconhecido ao gerar questão' },
       { status: 500 }
     )
   }
