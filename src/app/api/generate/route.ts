@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server'
 
-// Certifique-se de que a variável está disponível a cada request (importante para serverless)
 const openaiApiKey = process.env.OPENAI_API_KEY
 
-// Função para verificar a distribuição das respostas
 function verificaDistribuicaoRespostas(questions: any[]) {
   const contagem = questions.reduce((acc: { [key: number]: number }, q) => {
     if (q.correta !== undefined) {
@@ -28,9 +26,7 @@ function verificaDistribuicaoRespostas(questions: any[]) {
   }
 }
 
-// Função para gerar questões via OpenAI
 async function gerarQuestoes(prompt: string): Promise<any> {
-  // LOG para debug em produção
   console.log("Chamando OpenAI com prompt:", prompt.slice(0, 300) + '...')
 
   const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -48,7 +44,6 @@ async function gerarQuestoes(prompt: string): Promise<any> {
   })
 
   if (!openaiRes.ok) {
-    // LOG de erro detalhado
     const errText = await openaiRes.text()
     console.error("Erro da OpenAI:", openaiRes.status, errText)
     throw new Error(`Erro da OpenAI: ${openaiRes.status} - ${errText}`)
@@ -61,21 +56,27 @@ async function gerarQuestoes(prompt: string): Promise<any> {
     throw new Error('Erro ao gerar questões com a OpenAI: resposta vazia')
   }
 
+  // PARSER ROBUSTO
   let questions
   try {
     questions = JSON.parse(content)
   } catch {
-    // Tenta extrair o JSON de dentro do texto
+    // Tenta extrair o primeiro array JSON do texto
     const match = content.match(/\[[\s\S]*\]/)
     if (!match) {
+      console.error("Conteúdo retornado pela OpenAI (sem JSON):", content)
       throw new Error('JSON não encontrado na resposta da OpenAI')
     }
-    questions = JSON.parse(match[0])
+    try {
+      questions = JSON.parse(match[0])
+    } catch (err) {
+      console.error("Erro ao parsear JSON extraído:", match[0])
+      throw new Error('Falha ao parsear o JSON extraído da resposta da OpenAI')
+    }
   }
   return questions
 }
 
-// Funções de adaptação de prompt
 function getNivelQuestaoPrompt(nivel: string) {
   switch (nivel) {
     case 'Nível Fundamental I (até 11 anos)':
@@ -105,7 +106,6 @@ function getNivelExplicacaoPrompt(nivel: string) {
 }
 
 export async function POST(req: Request) {
-  // LOG para debug de variáveis de ambiente
   console.log("OPENAI_API_KEY está presente?", !!openaiApiKey)
 
   if (!openaiApiKey) {
@@ -197,13 +197,11 @@ Exemplo de formato esperado:
       tentativas++
     } while (tentativas < maxTentativas)
 
-    // LOG de sucesso
     console.log("Questões geradas com sucesso:", Array.isArray(questions) ? questions.length : typeof questions)
 
     return NextResponse.json({ questions })
 
   } catch (error: any) {
-    // LOG de erro detalhado
     console.error("Erro ao gerar questões:", error)
     return NextResponse.json(
       { error: error.message || 'Erro desconhecido ao gerar questões' },
