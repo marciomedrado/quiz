@@ -54,13 +54,13 @@ async function gerarQuestoes(prompt: string): Promise<any> {
 function getNivelQuestaoPrompt(nivel: string) {
   switch (nivel) {
     case 'Nível Fundamental I (até 11 anos)':
-      return 'As questões devem ser adequadas para crianças até 11 anos, com linguagem simples e exemplos do cotidiano escolar ou familiar. IMPORTANTE: Escolha tópicos aleatórios dentro do tema, não siga uma sequência didática. Evite conceitos introdutórios básicos, pode abordar qualquer aspecto do tema adequado à idade.'
+      return 'A questão deve ser adequada para crianças até 11 anos, com linguagem simples e exemplos do cotidiano escolar ou familiar. IMPORTANTE: Escolha um tópico aleatório dentro do tema, não siga uma sequência didática. Evite conceitos introdutórios básicos, pode abordar qualquer aspecto do tema adequado à idade.'
     case 'Nível Fundamental II (até 14 anos)':
-      return 'As questões devem ser adequadas para adolescentes até 14 anos, com linguagem acessível e exemplos do cotidiano escolar. IMPORTANTE: Escolha tópicos aleatórios dentro do tema, não siga uma sequência didática. Pode abordar qualquer conceito intermediário do tema, sem necessidade de começar do básico.'
+      return 'A questão deve ser adequada para adolescentes até 14 anos, com linguagem acessível e exemplos do cotidiano escolar. IMPORTANTE: Escolha um tópico aleatório dentro do tema, não siga uma sequência didática. Pode abordar qualquer conceito intermediário do tema, sem necessidade de começar do básico.'
     case 'Nível Médio':
-      return 'As questões devem ser adequadas para estudantes do Ensino Médio, com linguagem apropriada para jovens de 15 a 18 anos. IMPORTANTE: Escolha tópicos aleatórios dentro do tema, não siga uma sequência didática. Pode abordar qualquer conceito avançado do tema, incluindo aplicações práticas e situações complexas.'
+      return 'A questão deve ser adequada para estudantes do Ensino Médio, com linguagem apropriada para jovens de 15 a 18 anos. IMPORTANTE: Escolha um tópico aleatório dentro do tema, não siga uma sequência didática. Pode abordar qualquer conceito avançado do tema, incluindo aplicações práticas e situações complexas.'
     case 'Nível Superior':
-      return 'As questões devem ser adequadas para estudantes universitários, com linguagem técnica e abordagem aprofundada. IMPORTANTE: Escolha tópicos aleatórios dentro do tema, não siga uma sequência didática. Pode abordar qualquer aspecto específico ou avançado do tema, incluindo casos especiais e exceções.'
+      return 'A questão deve ser adequada para estudantes universitários, com linguagem técnica e abordagem aprofundada. IMPORTANTE: Escolha um tópico aleatório dentro do tema, não siga uma sequência didática. Pode abordar qualquer aspecto específico ou avançado do tema, incluindo casos especiais e exceções.'
     default:
       return ''
   }
@@ -94,14 +94,17 @@ export async function POST(req: Request) {
     const nivelQuestaoPrompt = getNivelQuestaoPrompt(body.nivel)
     const nivelExplicacaoPrompt = getNivelExplicacaoPrompt(body.explicacao)
 
+    // Se tem última_questao, significa que é o botão "+ questões", então gera apenas uma
+    const quantidadeQuestoes = body.ultima_questao ? 1 : body.quantidade
+
     const ultimaQuestao = body.ultima_questao ? JSON.stringify(body.ultima_questao, null, 2) : null
     const contextoPrompt = ultimaQuestao ? `
 Para referência, esta foi a última questão gerada:
 ${ultimaQuestao}
 
 IMPORTANTE: 
-- NÃO repita o mesmo contexto ou abordagem das questões anteriores
-- Gere questões DIFERENTES, com novos contextos e novas perspectivas
+- NÃO repita o mesmo contexto ou abordagem da questão anterior
+- Gere uma questão DIFERENTE, com novo contexto e nova perspectiva
 - Evite usar as mesmas palavras-chave nas alternativas
 ` : ''
 
@@ -110,7 +113,7 @@ IMPORTANTE:
     if (body.alternativas === 0 || body.alternativas === 'Aberta') {
       prompt = `
 ${contextoPrompt}
-Gere exatamente ${body.quantidade} questões sobre o tema "${body.tema}" na área "${body.area}".
+Gere exatamente ${quantidadeQuestoes} questões sobre o tema "${body.tema}" na área "${body.area}".
 Cada questão deve conter:
 1. O enunciado da questão (com contexto introdutório quando necessário)
 2. A resposta correta
@@ -130,7 +133,7 @@ Exemplo de formato esperado:
     } else {
       prompt = `
 ${contextoPrompt}
-Gere exatamente ${body.quantidade} questões de múltipla escolha sobre o tema "${body.tema}" na área "${body.area}".
+Gere exatamente ${quantidadeQuestoes} questões de múltipla escolha sobre o tema "${body.tema}" na área "${body.area}".
 Cada questão deve ter ${body.alternativas || 4} alternativas, apenas uma correta.
 IMPORTANTE: 
 - Crie um contexto introdutório relevante no enunciado
