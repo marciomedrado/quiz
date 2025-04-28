@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 
+// Certifique-se de que a variável está disponível a cada request (importante para serverless)
 const openaiApiKey = process.env.OPENAI_API_KEY
 
 // Função para verificar a distribuição das respostas
@@ -14,7 +15,7 @@ function verificaDistribuicaoRespostas(questions: any[]) {
   const total = questions.length
   const porcentagens = Object.entries(contagem).map(([posicao, quantidade]) => ({
     posicao: Number(posicao),
-    porcentagem: (quantidade / total) * 100
+    porcentagem: (quantidade as number / total) * 100
   }))
 
   const distribuicaoRuim = porcentagens.some(p => p.porcentagem > 60)
@@ -29,6 +30,9 @@ function verificaDistribuicaoRespostas(questions: any[]) {
 
 // Função para gerar questões via OpenAI
 async function gerarQuestoes(prompt: string): Promise<any> {
+  // LOG para debug em produção
+  console.log("Chamando OpenAI com prompt:", prompt.slice(0, 300) + '...')
+
   const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -36,24 +40,32 @@ async function gerarQuestoes(prompt: string): Promise<any> {
       'Authorization': `Bearer ${openaiApiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini', // Sempre usa gpt-4o-mini
+      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
       max_tokens: 2048,
     }),
   })
 
+  if (!openaiRes.ok) {
+    // LOG de erro detalhado
+    const errText = await openaiRes.text()
+    console.error("Erro da OpenAI:", openaiRes.status, errText)
+    throw new Error(`Erro da OpenAI: ${openaiRes.status} - ${errText}`)
+  }
+
   const openaiData = await openaiRes.json()
   const content = openaiData.choices?.[0]?.message?.content
 
   if (!content) {
-    throw new Error('Erro ao gerar questões com a OpenAI')
+    throw new Error('Erro ao gerar questões com a OpenAI: resposta vazia')
   }
 
   let questions
   try {
     questions = JSON.parse(content)
   } catch {
+    // Tenta extrair o JSON de dentro do texto
     const match = content.match(/\[[\s\S]*\]/)
     if (!match) {
       throw new Error('JSON não encontrado na resposta da OpenAI')
@@ -93,6 +105,9 @@ function getNivelExplicacaoPrompt(nivel: string) {
 }
 
 export async function POST(req: Request) {
+  // LOG para debug de variáveis de ambiente
+  console.log("OPENAI_API_KEY está presente?", !!openaiApiKey)
+
   if (!openaiApiKey) {
     return NextResponse.json(
       { error: 'OpenAI API key não configurada' },
@@ -182,11 +197,16 @@ Exemplo de formato esperado:
       tentativas++
     } while (tentativas < maxTentativas)
 
+    // LOG de sucesso
+    console.log("Questões geradas com sucesso:", Array.isArray(questions) ? questions.length : typeof questions)
+
     return NextResponse.json({ questions })
 
   } catch (error: any) {
+    // LOG de erro detalhado
+    console.error("Erro ao gerar questões:", error)
     return NextResponse.json(
-      { error: error.message },
+      { error: error.message || 'Erro desconhecido ao gerar questões' },
       { status: 500 }
     )
   }
