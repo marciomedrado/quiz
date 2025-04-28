@@ -4,16 +4,13 @@ import { Inter } from 'next/font/google'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { Toaster } from 'react-hot-toast'
 
-// Configuração da fonte Inter
 const inter = Inter({ subsets: ['latin'] })
 
-// Metadados da aplicação
 export const metadata: Metadata = {
   title: 'Quiz Generator',
   description: 'Gerador de quizzes com IA',
 }
 
-// Layout principal
 export default function RootLayout({
   children,
 }: {
@@ -34,15 +31,9 @@ export default function RootLayout({
               },
               success: {
                 duration: 3000,
-                theme: {
-                  primary: '#4aed88',
-                }
               },
               error: {
                 duration: 4000,
-                theme: {
-                  primary: '#ff4b4b',
-                }
               }
             }}
           />

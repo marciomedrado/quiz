@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import QuizForm, { QuizFormData } from '@/components/QuizForm'
+import ExamDataModal, { ExamData } from '@/components/ExamDataModal'
+import ListManager from '@/components/ListManager'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { Document, Packer, Paragraph, TextRun } from 'docx'
@@ -13,21 +15,14 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-// Função utilitária para embaralhar arrays
-function shuffleArray<T>(array: T[]): T[] {
-  const newArray = [...array]
-  for (let i = newArray.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [newArray[i], newArray[j]] = [newArray[j], newArray[i]]
-  }
-  return newArray
-}
+const letras = ['A', 'B', 'C', 'D', 'E']
 
 interface Question {
   enunciado: string
   alternativas?: string[]
   correta?: number
   explicacao: string
+  resposta?: string // para questões abertas
 }
 
 export default function Dashboard() {
@@ -35,10 +30,17 @@ export default function Dashboard() {
   const [isAuthChecking, setIsAuthChecking] = useState(true)
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(false)
+  const [showAddMore, setShowAddMore] = useState(false)
+  const [addCount, setAddCount] = useState(1)
+  const [isGeneratingMore, setIsGeneratingMore] = useState(false)
+  const [lastFormData, setLastFormData] = useState<QuizFormData | null>(null)
+  const [showExamModal, setShowExamModal] = useState(false)
+  const [showListManager, setShowListManager] = useState(false)
+  const [examData, setExamData] = useState<ExamData | null>(null)
+  const [isGeneratingDocx, setIsGeneratingDocx] = useState(false)
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
+  const [editData, setEditData] = useState<Partial<Question>>({})
 
-  const letras = ['A', 'B', 'C', 'D']
-
-  // Proteção de rota
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
@@ -49,11 +51,10 @@ export default function Dashboard() {
     })
   }, [router])
 
-  // Se ainda está verificando autenticação, mostra loading
   if (isAuthChecking) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 to-green-100">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     )
   }
@@ -61,6 +62,9 @@ export default function Dashboard() {
   const handleCreateQuiz = async (data: QuizFormData) => {
     setLoading(true)
     setQuestions([])
+    setShowAddMore(false)
+    setLastFormData(data)
+    setExamData(null)
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
@@ -77,6 +81,7 @@ export default function Dashboard() {
 
       const result = await response.json()
       setQuestions(result.questions)
+      setShowAddMore(true)
       toast.success('Questões geradas com sucesso!')
     } catch (error: any) {
       toast.error(error.message)
@@ -85,147 +90,227 @@ export default function Dashboard() {
     }
   }
 
-  const exportXLSX = () => {
-    // Cabeçalhos
-    const headers = [
-      'Enunciado',
-      'Alternativa A',
-      'Alternativa B',
-      'Alternativa C',
-      'Alternativa D',
-      'Resposta',
-      'Explicação'
-    ]
+  const handleGenerateMore = async () => {
+    if (!lastFormData) {
+      toast.error('Erro: Dados do formulário não encontrados')
+      return
+    }
 
-    // Linhas de dados
-    const rows = questions.map(q => {
-      if (!q.alternativas) {
-        // Questão aberta: só enunciado e explicação
-        return [
-          q.enunciado, '', '', '', '', '', q.explicacao
-        ]
+    if (addCount < 1 || addCount > 15) {
+      toast.error('Escolha entre 1 e 15 questões adicionais')
+      return
+    }
+
+    setIsGeneratingMore(true)
+    try {
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...lastFormData,
+          quantidade: addCount,
+          questoes_anteriores: questions,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Erro ao gerar questões adicionais')
       }
-      const alternativasComIndices = q.alternativas.map((alt, idx) => ({
-        texto: alt,
-        eCorreta: idx === q.correta
-      }))
-      const alternativasEmbaralhadas = shuffleArray(alternativasComIndices)
-      const alternativaCorreta = alternativasEmbaralhadas.find(alt => alt.eCorreta)?.texto || ''
-      const alternativasPadronizadas = [
-        alternativasEmbaralhadas[0]?.texto || '',
-        alternativasEmbaralhadas[1]?.texto || '',
-        alternativasEmbaralhadas[2]?.texto || '',
-        alternativasEmbaralhadas[3]?.texto || ''
-      ]
-      return [
-        q.enunciado,
-        ...alternativasPadronizadas,
-        alternativaCorreta,
-        q.explicacao
-      ]
-    })
 
-    // Monta a planilha
-    const wsData = [headers, ...rows]
-    const ws = XLSX.utils.aoa_to_sheet(wsData)
-
-    // Ajusta largura das colunas
-    ws['!cols'] = [
-      { wch: 40 }, // Enunciado
-      { wch: 20 }, // Alternativa A
-      { wch: 20 }, // Alternativa B
-      { wch: 20 }, // Alternativa C
-      { wch: 20 }, // Alternativa D
-      { wch: 20 }, // Resposta
-      { wch: 40 }, // Explicação
-    ]
-
-    // Cria o arquivo
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Quiz')
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-
-    // Faz download
-    const blob = new Blob([wbout], { type: 'application/octet-stream' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'quiz.xlsx'
-    a.click()
-    URL.revokeObjectURL(url)
+      const result = await response.json()
+      setQuestions(prev => [...prev, ...result.questions])
+      setAddCount(1)
+      toast.success('Questões adicionais geradas com sucesso!')
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsGeneratingMore(false)
+    }
   }
 
-  // DOCX exporta com letras nas alternativas e na resposta
-  const exportDOCX = async () => {
-    const letras = ['A', 'B', 'C', 'D']
-    const doc = new Document({
-      sections: [
-        {
-          properties: {},
-          children: questions.flatMap((q, idx) => {
-            const blocks = [
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `Questão ${idx + 1}:`, bold: true, size: 28 }),
-                ],
-                spacing: { after: 120 }
+  // XLSX exporta apenas a resposta, sem letra
+  const exportXLSX = () => {
+    if (!questions.length) return
+    const data = questions.map((q) => {
+      if (q.alternativas && typeof q.correta === 'number') {
+        return {
+          'Enunciado': q.enunciado,
+          'Alternativa A': q.alternativas[0] || '',
+          'Alternativa B': q.alternativas[1] || '',
+          'Alternativa C': q.alternativas[2] || '',
+          'Alternativa D': q.alternativas[3] || '',
+          'Resposta': q.alternativas[q.correta] || '',
+          'Explicação': q.explicacao,
+        }
+      } else {
+        return {
+          'Enunciado': q.enunciado,
+          'Resposta': q.resposta || '',
+          'Explicação': q.explicacao,
+        }
+      }
+    })
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Prova')
+    XLSX.writeFile(wb, 'prova.xlsx')
+  }
+
+  // Função para exportar DOCX (prova ou gabarito)
+  const exportDOCX = async (isProva = false) => {
+    if (!questions.length || !examData) return
+    setIsGeneratingDocx(true)
+    try {
+      const headerFields = [
+        { label: 'Escola', value: examData.escola },
+        { label: 'Professor', value: examData.professor },
+        { label: 'Aluno', value: examData.aluno },
+        { label: 'Turma', value: examData.turma },
+        { label: 'Disciplina', value: examData.disciplina },
+        { label: 'Área', value: examData.area },
+        { label: 'Tema', value: examData.tema },
+      ]
+
+      const headerParagraphs = headerFields.map(
+        ({ label, value }) =>
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${label}: `, bold: true }),
+              new TextRun({ text: value || '' }),
+            ],
+            spacing: { after: 100 },
+          })
+      )
+
+      const corpoQuestoes = questions.flatMap((q, idx) => {
+        const questoes: Paragraph[] = [
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `Questão ${idx + 1}:`,
+                bold: true,
+                size: 28,
               }),
-              new Paragraph({
-                children: [
-                  new TextRun({ text: q.enunciado, size: 24 }),
-                ],
-                spacing: { after: 120 }
-              }),
-            ];
-
-            if (q.alternativas && q.alternativas.length > 0) {
-              blocks.push(
-                new Paragraph({
-                  children: [
-                    new TextRun({ text: "Alternativas:", bold: true, size: 24 }),
-                  ],
-                  spacing: { after: 80 }
-                }),
-                ...q.alternativas.map((alt, i) =>
-                  new Paragraph({
-                    children: [
-                      new TextRun({ text: `${letras[i]}) ${alt}`, size: 24 }),
-                    ],
-                    spacing: { after: 40 }
-                  })
-                ),
-                typeof q.correta === 'number' && new Paragraph({
-                  children: [
-                    new TextRun({ text: `Correta: ${letras[q.correta]}) ${q.alternativas[q.correta]}`, bold: true, size: 24 }),
-                  ],
-                  spacing: { after: 80 }
-                })
-              );
-            }
-
-            blocks.push(
-              new Paragraph({
-                children: [
-                  new TextRun({ text: `Explicação: ${q.explicacao}`, size: 22 }),
-                ],
-                spacing: { after: 200 }
-              })
-            );
-
-            // Remove possíveis "false" do array (caso não haja correta)
-            return blocks.filter(Boolean);
+            ],
+            spacing: { after: 100 },
           }),
-        },
-      ],
-    });
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: q.enunciado,
+                size: 24,
+              }),
+            ],
+            spacing: { after: 100 },
+          }),
+        ]
+        if (q.alternativas && q.alternativas.length > 0) {
+          questoes.push(
+            ...q.alternativas.map((alt, i) =>
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `${letras[i]}) ${alt}`,
+                    size: 24,
+                  }),
+                ],
+                spacing: { after: 50 },
+              })
+            )
+          )
+          if (!isProva && typeof q.correta === 'number') {
+            questoes.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `Resposta: ${q.alternativas[q.correta]}`,
+                    bold: true,
+                    color: '008000',
+                    size: 24,
+                  }),
+                ],
+                spacing: { after: 100 },
+              })
+            )
+          }
+        } else if (!isProva && q.resposta) {
+          questoes.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Resposta: ${q.resposta}`,
+                  bold: true,
+                  color: '008000',
+                  size: 24,
+                }),
+              ],
+              spacing: { after: 100 },
+            })
+          )
+        }
+        if (!isProva) {
+          questoes.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Explicação: ${q.explicacao}`,
+                  italics: true,
+                  size: 22,
+                  color: '666666',
+                }),
+              ],
+              spacing: { after: 200 },
+            })
+          )
+        }
+        return questoes
+      })
 
-    const blob = await Packer.toBlob(doc)
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'quiz.docx'
-    a.click()
-    URL.revokeObjectURL(url)
+      // Cria o documento
+      const doc = new Document({
+        sections: [
+          {
+            properties: {},
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: isProva ? 'Prova' : 'Gabarito',
+                    bold: true,
+                    size: 32,
+                  }),
+                ],
+                alignment: 'center',
+                spacing: { after: 300 },
+              }),
+              ...headerParagraphs,
+              new Paragraph({ text: '', spacing: { after: 200 } }),
+              ...corpoQuestoes,
+            ],
+          },
+        ],
+      })
+
+      const alunoNome = examData.aluno?.trim() ? examData.aluno : 'geral'
+      const sufixo = isProva ? 'prova' : 'gabarito'
+      const nomeArquivo = `${examData.disciplina || ''}_${examData.tema || ''}_${examData.turma || ''}_${alunoNome}_${questions.length}_questoes_${sufixo}.docx`
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .toLowerCase()
+
+      const blob = await Packer.toBlob(doc)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = nomeArquivo
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } finally {
+      setIsGeneratingDocx(false)
+    }
   }
 
   const handleLogout = async () => {
@@ -233,79 +318,311 @@ export default function Dashboard() {
     window.location.href = '/'
   }
 
+  // Função para mover questão
+  const moveQuestion = (from: number, to: number) => {
+    if (to < 0 || to >= questions.length) return
+    const updated = [...questions]
+    const [removed] = updated.splice(from, 1)
+    updated.splice(to, 0, removed)
+    setQuestions(updated)
+  }
+
+  // Edição
+  const handleEdit = (idx: number) => {
+    setEditingIdx(idx)
+    setEditData({ ...questions[idx] })
+  }
+
+  const handleSave = (idx: number) => {
+    const updated = [...questions]
+    updated[idx] = { ...updated[idx], ...editData }
+    setQuestions(updated)
+    setEditingIdx(null)
+    setEditData({})
+  }
+
+  // Cancelar edição
+  const handleCancelEdit = () => {
+    setEditingIdx(null)
+    setEditData({})
+  }
+
+  // Exclusão com confirmação
+  const handleDelete = (idx: number) => {
+    if (window.confirm('Tem certeza que deseja excluir esta questão?')) {
+      setQuestions(questions.filter((_, i) => i !== idx))
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold">Gerador de Quiz</h1>
-            <button
-              onClick={handleLogout}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-            >
-              Logout
-            </button>
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-green-100 flex flex-col font-sans">
+      <div className="flex flex-1 flex-col items-center justify-center">
+        <header className="w-full flex flex-col items-center mt-12 mb-6">
+          <h1 className="text-4xl md:text-5xl font-extrabold text-blue-700 font-sans text-center mb-2 drop-shadow">
+            Gerador de Provas
+          </h1>
+          <button
+            onClick={handleLogout}
+            className="mt-2 bg-white text-blue-600 font-semibold px-4 py-2 rounded-lg shadow hover:bg-blue-50 transition"
+          >
+            Sair
+          </button>
+        </header>
+        <main className="w-full flex flex-col items-center">
+          <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg mb-8">
+            <QuizForm onSubmit={handleCreateQuiz} />
+            {loading && (
+              <div className="mt-4 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-2 text-sm text-gray-600">Gerando questões...</p>
+              </div>
+            )}
           </div>
-          <QuizForm onSubmit={handleCreateQuiz} />
-
-          {loading && (
-            <div className="mt-4 text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-              <p className="mt-2 text-sm text-gray-600">Gerando questões...</p>
-            </div>
-          )}
-
           {questions.length > 0 && (
-            <div className="mt-8">
-              <div className="flex gap-4 mb-4">
+            <div className="w-full max-w-3xl flex flex-col items-center">
+              {/* Botões de ação */}
+              <div className="flex gap-4 mb-6">
                 <button
                   onClick={exportXLSX}
-                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded"
+                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-semibold shadow transition"
                 >
                   Exportar XLSX
                 </button>
                 <button
-                  onClick={exportDOCX}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                  onClick={() => setShowExamModal(true)}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold shadow transition"
                 >
-                  Exportar DOCX
+                  Gerar Prova
                 </button>
+                <button
+                  onClick={() => setShowListManager(true)}
+                  className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold shadow transition"
+                >
+                  Gerenciar Listas
+                </button>
+                {examData && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => exportDOCX(true)}
+                      className="bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded-lg font-semibold shadow transition"
+                      disabled={isGeneratingDocx}
+                    >
+                      {isGeneratingDocx ? 'Gerando...' : 'Baixar Prova'}
+                    </button>
+                    <button
+                      onClick={() => exportDOCX(false)}
+                      className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg font-semibold shadow transition"
+                      disabled={isGeneratingDocx}
+                    >
+                      {isGeneratingDocx ? 'Gerando...' : 'Baixar Gabarito'}
+                    </button>
+                  </div>
+                )}
               </div>
-              <h2 className="text-lg font-semibold mb-2">Questões Geradas</h2>
-              <ul className="space-y-6">
+
+              {/* Título e área das questões geradas */}
+              <h2 className="text-2xl font-bold text-blue-700 mb-4">Questões Geradas</h2>
+              <div className="flex flex-col gap-y-12 w-full">
                 {questions.map((q, idx) => (
-                  <li key={idx} className="bg-gray-100 rounded p-4">
-                    <div className="font-semibold mb-2">Questão {idx + 1}:</div>
-                    <div className="mb-2">{q.enunciado}</div>
-                    {q.alternativas && q.alternativas.length > 0 && (
-                      <>
-                        <ul className="mb-2 list-disc pl-6">
-                          {q.alternativas.map((alt, i) => (
-                            <li
-                              key={i}
-                              className={i === q.correta ? 'font-bold text-green-700' : ''}
+                  <div
+                    key={idx}
+                    className="bg-white border border-blue-100 rounded-xl shadow-md p-6 flex flex-col"
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-blue-800">Questão {idx + 1}</span>
+                        <button
+                          onClick={() => moveQuestion(idx, idx - 1)}
+                          disabled={editingIdx !== null || idx === 0}
+                          className={`font-bold px-1 ${editingIdx !== null || idx === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-blue-700'}`}
+                          title="Mover para cima"
+                          type="button"
+                        >↑</button>
+                        <button
+                          onClick={() => moveQuestion(idx, idx + 1)}
+                          disabled={editingIdx !== null || idx === questions.length - 1}
+                          className={`font-bold px-1 ${editingIdx !== null || idx === questions.length - 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-blue-700'}`}
+                          title="Mover para baixo"
+                          type="button"
+                        >↓</button>
+                      </div>
+                      <div className="flex gap-2">
+                        {editingIdx === idx ? (
+                          <>
+                            {/* Botões no modo edição */}
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleEdit(idx)}
+                              className="text-blue-600 font-bold"
+                              type="button"
                             >
-                              <span className="font-semibold">{letras[i]})</span> {alt}
-                            </li>
-                          ))}
-                        </ul>
-                        {typeof q.correta === 'number' && (
-                          <div className="mb-2 text-green-700 font-semibold">
-                            Resposta: {letras[q.correta]}) {q.alternativas[q.correta]}
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleDelete(idx)}
+                              className="text-red-600 font-bold"
+                              type="button"
+                            >
+                              Excluir
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {editingIdx === idx ? (
+                      <>
+                        <div className="mb-2">
+                          <label className="block text-xs font-semibold text-blue-700 mb-1">Enunciado</label>
+                          <input
+                            className="mb-2 border rounded px-2 py-1 w-full"
+                            value={editData.enunciado || ''}
+                            onChange={e =>
+                              setEditData(ed => ({ ...ed, enunciado: e.target.value }))
+                            }
+                          />
+                        </div>
+                        {q.alternativas && (
+                          <div className="mb-2">
+                            <label className="block text-xs font-semibold text-blue-700 mb-1">Alternativas</label>
+                            {q.alternativas.map((alt, i) => (
+                              <div key={i} className="flex items-center gap-2 mb-1">
+                                <span className="font-bold text-blue-700 mr-1">{letras[i]})</span>
+                                <input
+                                  className="border rounded px-2 py-1 flex-1"
+                                  value={editData.alternativas?.[i] ?? alt}
+                                  onChange={e => {
+                                    const newAlts = [...(editData.alternativas || q.alternativas!)]
+                                    newAlts[i] = e.target.value
+                                    setEditData(ed => ({ ...ed, alternativas: newAlts }))
+                                  }}
+                                />
+                                <input
+                                  type="radio"
+                                  name={`correta-${idx}`}
+                                  checked={editData.correta === i}
+                                  onChange={() => setEditData(ed => ({ ...ed, correta: i }))}
+                                  title="Marcar como correta"
+                                />
+                                <span className="text-xs text-green-700">{editData.correta === i ? 'Correta' : ''}</span>
+                              </div>
+                            ))}
                           </div>
                         )}
+                        <div className="mb-2">
+                          <label className="block text-xs font-semibold text-blue-700 mb-1">Explicação</label>
+                          <input
+                            className="border rounded px-2 py-1 w-full"
+                            value={editData.explicacao || ''}
+                            onChange={e =>
+                              setEditData(ed => ({ ...ed, explicacao: e.target.value }))
+                            }
+                          />
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => handleSave(idx)}
+                            className="text-green-600 font-bold"
+                            type="button"
+                          >
+                            Salvar
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="text-gray-600 font-bold"
+                            type="button"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mb-2 text-gray-800">{q.enunciado}</div>
+                        {q.alternativas && q.alternativas.length > 0 && (
+                          <ul className="mb-2 list-none pl-0">
+                            {q.alternativas.map((alt, i) => (
+                              <li
+                                key={i}
+                                className={`flex items-center gap-2 ${i === q.correta ? 'font-bold text-green-700' : 'text-gray-700'}`}
+                              >
+                                <span className="font-bold text-blue-700 mr-1">{letras[i]})</span>
+                                {alt}
+                                {i === q.correta && (
+                                  <span className="ml-2 text-xs text-green-700 font-semibold">(Correta)</span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="text-sm text-gray-600 mt-2">
+                          <span className="font-semibold">Explicação:</span> {q.explicacao}
+                        </div>
                       </>
                     )}
-                    <div className="text-sm text-gray-600">
-                      <span className="font-semibold">Explicação:</span> {q.explicacao}
-                    </div>
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </div>
+
+              {/* Bloco de "Gerar mais questões" vem depois */}
+              {showAddMore && (
+                <div className="mt-8 p-4 bg-white rounded-lg shadow-md w-full">
+                  <h3 className="text-lg font-semibold text-blue-700 mb-3">
+                    Gerar mais questões
+                  </h3>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-600">Quantidade:</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={15}
+                        value={addCount}
+                        onChange={(e) => setAddCount(Number(e.target.value))}
+                        className="w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    </div>
+                    <button
+                      onClick={handleGenerateMore}
+                      disabled={isGeneratingMore}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold shadow transition disabled:opacity-50"
+                    >
+                      {isGeneratingMore ? (
+                        <span className="flex items-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Gerando...
+                        </span>
+                      ) : (
+                        '+ questões'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </main>
       </div>
+      <footer className="text-center text-gray-500 py-6 mt-8">
+        Criado por Márcio Medrado - marciomedrado@gmail.com
+      </footer>
+      {/* Modais */}
+      <ExamDataModal
+        isOpen={showExamModal}
+        onClose={() => setShowExamModal(false)}
+        onConfirm={data => {
+          setExamData(data)
+          setShowExamModal(false)
+          toast.success('Dados da prova salvos! Agora você pode baixar a Prova e o Gabarito.')
+        }}
+        defaultArea={lastFormData?.area || ''}
+        defaultTema={lastFormData?.tema || ''}
+      />
+      <ListManager
+        isOpen={showListManager}
+        onClose={() => setShowListManager(false)}
+      />
     </div>
   )
 }

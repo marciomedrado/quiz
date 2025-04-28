@@ -1,121 +1,156 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 
 export interface QuizFormData {
   area: string
   tema: string
-  numQuestoes: number
-  numAlternativas: string
-  lingua: string
-  nivelQuestao: string
-  nivelExplicacao: string
+  quantidade: number
+  alternativas: number
+  idioma: string
+  nivel: string
+  explicacao: string
 }
 
-interface Props {
+interface QuizFormProps {
   onSubmit: (data: QuizFormData) => void
 }
 
-export default function QuizForm({ onSubmit }: Props) {
+const niveis = [
+  'Nível Fundamental I (até 11 anos)',
+  'Nível Fundamental II (até 14 anos)',
+  'Nível Médio',
+  'Nível Superior',
+]
+
+const explicacoes = [
+  'Direta e curta.',
+  'Detalhada e aprofundada.',
+  'Com analogias e exemplos.',
+]
+
+export default function QuizForm({ onSubmit }: QuizFormProps) {
   const [form, setForm] = useState<QuizFormData>({
     area: '',
     tema: '',
-    numQuestoes: 1,
-    numAlternativas: '4',
-    lingua: 'Português',
-    nivelQuestao: 'Nível Fundamental I (até 11 anos)',
-    nivelExplicacao: 'Direta e curta.',
+    quantidade: 1,
+    alternativas: 4,
+    idioma: 'Português',
+    nivel: niveis[0],
+    explicacao: explicacoes[0],
   })
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setForm(prev => ({
+      ...prev,
+      [name]: name === 'quantidade' || name === 'alternativas' ? Number(value) : value,
+    }))
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onSubmit(form)
+  }
 
   return (
     <form
-      onSubmit={e => {
-        e.preventDefault()
-        onSubmit(form)
-      }}
-      className="space-y-2"
+      onSubmit={handleSubmit}
+      className="space-y-4 bg-gradient-to-br from-blue-50 to-green-50 rounded-xl p-6 shadow-md"
     >
       <div>
-        <label>Área do Quiz</label>
+        <label className="block text-sm font-medium text-blue-700 mb-1">Área do Quiz</label>
         <input
           type="text"
+          name="area"
           value={form.area}
-          onChange={e => setForm({ ...form, area: e.target.value })}
-          className="border ml-2"
+          onChange={handleChange}
+          required
+          className="w-full rounded-lg border border-blue-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          placeholder="Ex: Matemática"
         />
       </div>
       <div>
-        <label>Tema do Quiz</label>
+        <label className="block text-sm font-medium text-blue-700 mb-1">Tema do Quiz</label>
         <input
           type="text"
+          name="tema"
           value={form.tema}
-          onChange={e => setForm({ ...form, tema: e.target.value })}
-          className="border ml-2"
+          onChange={handleChange}
+          required
+          className="w-full rounded-lg border border-blue-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          placeholder="Ex: Frações"
         />
       </div>
-      <div>
-        <label>Número de Questões</label>
-        <input
-          type="number"
-          min={1}
-          max={50}
-          value={form.numQuestoes}
-          onChange={e => setForm({ ...form, numQuestoes: Number(e.target.value) })}
-          className="border ml-2 w-16"
-        />
+      <div className="flex gap-4">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-blue-700 mb-1">Número de Questões</label>
+          <input
+            type="number"
+            name="quantidade"
+            value={form.quantidade}
+            onChange={handleChange}
+            min={1}
+            max={20}
+            required
+            className="w-full rounded-lg border border-blue-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-blue-700 mb-1">Número de Alternativas</label>
+          <select
+            name="alternativas"
+            value={form.alternativas}
+            onChange={handleChange}
+            className="w-full rounded-lg border border-blue-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          >
+            <option value={2}>2</option>
+            <option value={3}>3</option>
+            <option value={4}>4</option>
+            <option value={5}>5</option>
+            <option value={0}>Aberta</option>
+          </select>
+        </div>
       </div>
       <div>
-        <label>Número de Alternativas</label>
+        <label className="block text-sm font-medium text-blue-700 mb-1">Idioma</label>
         <select
-          value={form.numAlternativas}
-          onChange={e => setForm({ ...form, numAlternativas: e.target.value })}
-          className="border ml-2"
+          name="idioma"
+          value={form.idioma}
+          onChange={handleChange}
+          className="w-full rounded-lg border border-blue-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
         >
-          <option value="Aberta">Aberta</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
+          <option>Português</option>
+          <option>Inglês</option>
         </select>
       </div>
       <div>
-        <label>Idioma</label>
+        <label className="block text-sm font-medium text-blue-700 mb-1">Nível da Questão</label>
         <select
-          value={form.lingua}
-          onChange={e => setForm({ ...form, lingua: e.target.value })}
-          className="border ml-2"
+          name="nivel"
+          value={form.nivel}
+          onChange={handleChange}
+          className="w-full rounded-lg border border-blue-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
         >
-          <option value="Português">Português</option>
-          <option value="Inglês">Inglês</option>
-          <option value="Espanhol">Espanhol</option>
+          {niveis.map(n => (
+            <option key={n}>{n}</option>
+          ))}
         </select>
       </div>
       <div>
-        <label>Nível da Questão</label>
+        <label className="block text-sm font-medium text-blue-700 mb-1">Nível da Explicação</label>
         <select
-          value={form.nivelQuestao}
-          onChange={e => setForm({ ...form, nivelQuestao: e.target.value })}
-          className="border ml-2"
+          name="explicacao"
+          value={form.explicacao}
+          onChange={handleChange}
+          className="w-full rounded-lg border border-blue-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
         >
-          <option>Nível Fundamental I (até 11 anos)</option>
-          <option>Nível Fundamental II (até 15 anos)</option>
-          <option>Nível Médio (Ensino Médio)</option>
-          <option>Nível Avançado (Ensino Superior)</option>
-        </select>
-      </div>
-      <div>
-        <label>Nível da Explicação</label>
-        <select
-          value={form.nivelExplicacao}
-          onChange={e => setForm({ ...form, nivelExplicacao: e.target.value })}
-          className="border ml-2"
-        >
-          <option>Direta e curta.</option>
-          <option>Explicação curta.</option>
-          <option>Explicação intermediária.</option>
-          <option>Explicação detalhada.</option>
+          {explicacoes.map(e => (
+            <option key={e}>{e}</option>
+          ))}
         </select>
       </div>
       <button
         type="submit"
-        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg shadow transition"
       >
         Gerar Questões
       </button>

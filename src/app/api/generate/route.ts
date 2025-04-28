@@ -50,12 +50,17 @@ async function gerarQuestoes(prompt: string): Promise<any> {
     throw new Error('Erro ao gerar questões com a OpenAI')
   }
 
-  const match = content.match(/\[\s*{[\s\S]*}\s*\]/)
-  if (!match) {
-    throw new Error('JSON não encontrado na resposta da OpenAI')
+  let questions
+  try {
+    questions = JSON.parse(content)
+  } catch {
+    const match = content.match(/\[[\s\S]*\]/)
+    if (!match) {
+      throw new Error('JSON não encontrado na resposta da OpenAI')
+    }
+    questions = JSON.parse(match[0])
   }
-
-  return JSON.parse(match[0])
+  return questions
 }
 
 // Funções de adaptação de prompt
@@ -63,11 +68,11 @@ function getNivelQuestaoPrompt(nivel: string) {
   switch (nivel) {
     case 'Nível Fundamental I (até 11 anos)':
       return 'As questões devem ser adequadas para crianças até 11 anos, com linguagem simples e exemplos do cotidiano escolar ou familiar.'
-    case 'Nível Fundamental II (até 15 anos)':
-      return 'As questões devem ser adequadas para adolescentes até 15 anos, com linguagem acessível e exemplos do cotidiano escolar, podendo abordar temas um pouco mais complexos.'
-    case 'Nível Médio (Ensino Médio)':
+    case 'Nível Fundamental II (até 14 anos)':
+      return 'As questões devem ser adequadas para adolescentes até 14 anos, com linguagem acessível e exemplos do cotidiano escolar, podendo abordar temas um pouco mais complexos.'
+    case 'Nível Médio':
       return 'As questões devem ser adequadas para estudantes do Ensino Médio, com linguagem apropriada para jovens de 15 a 18 anos, podendo abordar temas mais aprofundados e críticos.'
-    case 'Nível Avançado (Ensino Superior)':
+    case 'Nível Superior':
       return 'As questões devem ser adequadas para estudantes universitários, com linguagem técnica e abordagem aprofundada dos temas.'
     default:
       return ''
@@ -78,12 +83,10 @@ function getNivelExplicacaoPrompt(nivel: string) {
   switch (nivel) {
     case 'Direta e curta.':
       return 'A explicação deve ser direta e muito curta, apenas o essencial para justificar a resposta.'
-    case 'Explicação curta.':
-      return 'A explicação deve ser curta, clara e objetiva, com uma frase simples.'
-    case 'Explicação intermediária.':
-      return 'A explicação deve ser intermediária, com detalhes suficientes para justificar a resposta, mas sem se alongar demais.'
-    case 'Explicação detalhada.':
+    case 'Detalhada e aprofundada.':
       return 'A explicação deve ser detalhada, com justificativas completas, exemplos e aprofundamento no tema.'
+    case 'Com analogias e exemplos.':
+      return 'A explicação deve conter analogias e exemplos para facilitar o entendimento.'
     default:
       return ''
   }
@@ -99,8 +102,9 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const nivelQuestaoPrompt = getNivelQuestaoPrompt(body.nivelQuestao)
-    const nivelExplicacaoPrompt = getNivelExplicacaoPrompt(body.nivelExplicacao)
+    const nivelQuestaoPrompt = getNivelQuestaoPrompt(body.nivel)
+    const nivelExplicacaoPrompt = getNivelExplicacaoPrompt(body.explicacao)
+    const questoesAnteriores = body.questoes_anteriores || []
 
     let questions
     let tentativas = 0
@@ -109,9 +113,19 @@ export async function POST(req: Request) {
     do {
       let prompt = ''
       
-      if (body.numAlternativas === 'Aberta') {
-        prompt = `
-Gere ${body.numQuestoes} questões abertas sobre o tema "${body.tema}" na área "${body.area}".
+      const contextoPrevio = questoesAnteriores.length > 0 
+        ? `
+Importante: Já foram geradas as seguintes questões anteriormente:
+${JSON.stringify(questoesAnteriores, null, 2)}
+
+NÃO REPITA nenhuma dessas questões. Gere questões DIFERENTES das anteriores, variando o formato e a abordagem.
+
+`
+        : ''
+
+      if (body.alternativas === 0 || body.alternativas === 'Aberta') {
+        prompt = `${contextoPrevio}
+Gere exatamente ${body.quantidade} questões NOVAS E DIFERENTES sobre o tema "${body.tema}" na área "${body.area}".
 Cada questão deve conter:
 1. O enunciado da questão
 2. A resposta correta
@@ -129,11 +143,13 @@ Exemplo de formato esperado:
 ]
 `
       } else {
-        prompt = `
-Gere ${body.numQuestoes} questões de múltipla escolha sobre o tema "${body.tema}" na área "${body.area}".
-Cada questão deve ter ${body.numAlternativas || 4} alternativas, apenas uma correta.
-IMPORTANTE: Distribua as respostas corretas de forma aleatória entre as alternativas.
-Evite colocar muitas respostas corretas na mesma posição.
+        prompt = `${contextoPrevio}
+Gere exatamente ${body.quantidade} questões NOVAS E DIFERENTES de múltipla escolha sobre o tema "${body.tema}" na área "${body.area}".
+Cada questão deve ter ${body.alternativas || 4} alternativas, apenas uma correta.
+IMPORTANTE: 
+- Distribua as respostas corretas de forma aleatória entre as alternativas.
+- Evite colocar muitas respostas corretas na mesma posição.
+- NÃO REPITA questões anteriores nem use formatos muito similares.
 Escreva as alternativas como uma lista de strings, sem letras, números ou símbolos antes do texto (apenas o texto da alternativa).
 Indique o índice da alternativa correta após o embaralhamento, usando o campo "correta" (de 0 a 3).
 ${nivelQuestaoPrompt}
@@ -153,7 +169,7 @@ Exemplo de formato esperado:
 
       questions = await gerarQuestoes(prompt)
       
-      if (body.numAlternativas !== 'Aberta') {
+      if (body.alternativas !== 0 && body.alternativas !== 'Aberta') {
         const { distribuicaoRuim, todasMesmaPosicao } = verificaDistribuicaoRespostas(questions)
         if (!distribuicaoRuim && !todasMesmaPosicao) {
           break
