@@ -89,7 +89,7 @@ export default function QuizForm({ onSubmit }: QuizFormProps) {
             value={form.quantidade}
             onChange={handleChange}
             min={1}
-            max={1}
+            max={10}
             required
             className="w-full rounded-lg border border-blue-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
