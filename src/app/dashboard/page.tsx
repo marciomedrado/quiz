@@ -138,6 +138,9 @@ export default function Dashboard() {
   
     setIsGeneratingMore(true)
     try {
+      // Pega a última questão do array de questions
+      const ultimaQuestao = questions.length > 0 ? questions[questions.length - 1] : null
+
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: {
@@ -145,7 +148,8 @@ export default function Dashboard() {
         },
         body: JSON.stringify({
           ...lastFormData,
-          quantidade: 1
+          quantidade: 1,
+          ultima_questao: ultimaQuestao // Adiciona a última questão ao body
         }),
       })
   
