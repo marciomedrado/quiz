@@ -510,6 +510,19 @@ export default function Dashboard() {
                             ))}
                           </div>
                         )}
+                        {/* Campo de resposta para questão aberta */}
+                        {(!q.alternativas || q.alternativas.length === 0) && (
+                          <div className="mb-2">
+                            <label className="block text-xs font-semibold text-green-700 mb-1">Resposta</label>
+                            <input
+                              className="border rounded px-2 py-1 w-full"
+                              value={editData.resposta || ''}
+                              onChange={e =>
+                                setEditData(ed => ({ ...ed, resposta: e.target.value }))
+                              }
+                            />
+                          </div>
+                        )}
                         <div className="mb-2">
                           <label className="block text-xs font-semibold text-blue-700 mb-1">Explicação</label>
                           <input
@@ -540,30 +553,30 @@ export default function Dashboard() {
                     ) : (
                       <>
                         <div className="mb-2 text-gray-800">{q.enunciado}</div>
-                          {(!q.alternativas || q.alternativas.length === 0) && q.resposta && (
-                            <div className="mb-2 text-green-700 font-semibold">
-                              Resposta: {q.resposta}
-                            </div>
-                          )}
-                          {q.alternativas && q.alternativas.length > 0 && (
-                            <ul className="mb-2 list-none pl-0">
-                              {q.alternativas.map((alt, i) => (
-                                <li
-                                  key={i}
-                                  className={`flex items-center gap-2 ${i === q.correta ? 'font-bold text-green-700' : 'text-gray-700'}`}
-                                >
-                                  <span className="font-bold text-blue-700 mr-1">{letras[i]})</span>
-                                  {alt}
-                                  {i === q.correta && (
-                                    <span className="ml-2 text-xs text-green-700 font-semibold">(Correta)</span>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                          <div className="text-sm text-gray-600 mt-2">
-                            <span className="font-semibold">Explicação:</span> {q.explicacao}
+                        {(!q.alternativas || q.alternativas.length === 0) && q.resposta && (
+                          <div className="mb-2 text-green-700 font-semibold">
+                            Resposta: {q.resposta}
                           </div>
+                        )}
+                        {q.alternativas && q.alternativas.length > 0 && (
+                          <ul className="mb-2 list-none pl-0">
+                            {q.alternativas.map((alt, i) => (
+                              <li
+                                key={i}
+                                className={`flex items-center gap-2 ${i === q.correta ? 'font-bold text-green-700' : 'text-gray-700'}`}
+                              >
+                                <span className="font-bold text-blue-700 mr-1">{letras[i]})</span>
+                                {alt}
+                                {i === q.correta && (
+                                  <span className="ml-2 text-xs text-green-700 font-semibold">(Correta)</span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="text-sm text-gray-600 mt-2">
+                          <span className="font-semibold">Explicação:</span> {q.explicacao}
+                        </div>
                       </>
                     )}
                   </div>
