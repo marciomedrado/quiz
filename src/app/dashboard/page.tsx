@@ -148,7 +148,6 @@ export default function Dashboard() {
         },
         body: JSON.stringify({
           ...lastFormData,
-          quantidade: 1,
           ultima_questao: ultimaQuestao // Adiciona a última questão ao body
         }),
       })
